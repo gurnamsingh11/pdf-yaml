@@ -2,75 +2,71 @@ import os
 import base64
 import requests
 from pdf2image import convert_from_path
+from io import BytesIO
 
-def pdf_to_images(pdf_path, output_dir, poppler_path=None):
+def pdf_to_yaml(pdf_path, poppler_path, api_key, endpoint):
     """
-    Convert each page of a PDF into an image and save them in the specified directory.
+    Convert each page of a PDF directly into YAML without saving images, and return the final YAML string.
     """
-    if not os.path.exists(output_dir):
-        os.makedirs(output_dir)
 
-    pages = convert_from_path(pdf_path, poppler_path=poppler_path)
-
-    image_paths = []
-    for i, page in enumerate(pages):
-        output_file = os.path.join(output_dir, f"page_{i + 1}.png")
-        page.save(output_file, 'PNG')
-        image_paths.append(output_file)
-        print(f"Saved {output_file}")
-
-    return image_paths
-
-def convert_images_to_yaml(image_paths, api_key, endpoint):
-    """
-    Convert a list of images to a combined YAML string using a specified API endpoint.
-    """
-    combined_yaml = ""
+    pdf_name = os.path.basename(pdf_path).replace('.pdf', '')
+    base_dir = os.path.dirname(pdf_path)
+    
     headers = {
         "Content-Type": "application/json",
         "api-key": api_key,
     }
 
-    for image_path in image_paths:
-        print(f"Processing {image_path}...")
-        encoded_image = base64.b64encode(open(image_path, 'rb').read()).decode('ascii')
-        
+
+    print(f"Converting {pdf_name} PDF pages to images...")
+    pages = convert_from_path(pdf_path, poppler_path=poppler_path)
+
+    combined_yaml = ""
+
+    for i, page in enumerate(pages):
+        print(f"Processing page {i + 1} of {pdf_name}...")
+
+        img_byte_arr = BytesIO()
+        page.save(img_byte_arr, format='PNG')
+        img_byte_arr.seek(0)
+
+        encoded_image = base64.b64encode(img_byte_arr.read()).decode('ascii')
+
         payload = {
-            "messages": [
-                {
-                    "role": "system",
-                    "content": [
-                        {
-                            "type": "text",
-                            "text": "You are an AI assistant that converts given image to YAML file."
-                        }
-                        ]
-                },
-                {
-                    "role": "user",
-                    "content": [
-                        {
-                            "type": "text",
-                            "text": "\n"
-                        },
-                        {
-                            "type": "image_url",
-                            "image_url": 
-                            {
-                                "url": f"data:image/jpeg;base64,{encoded_image}"
-                            }
-                        },
-                        {
-                            "type": "text",
-                            "text": "Convert the given image to YAML file without adding any other data by yourself."
-                        }
-                               ]
-                }
-                        ],
-            "temperature": 0,
-            "top_p": 0.95,
-            "max_tokens": 800
+      "messages": [
+        {
+          "role": "system",
+          "content": [
+            {
+              "type": "text",
+              "text": "You are an AI assistant that converts given image to YAML file."
             }
+          ]
+        },
+        {
+          "role": "user",
+          "content": [
+            {
+              "type": "text",
+              "text": "\n"
+            },
+            {
+              "type": "image_url",
+              "image_url": {
+                "url": f"data:image/jpeg;base64,{encoded_image}"
+              }
+            },
+            {
+              "type": "text",
+              "text": "Convert the given image to YAML file without adding any other data by yourself."
+            }
+          ]
+        }
+      ],
+      "temperature": 0,
+      "top_p": 0.95,
+      "max_tokens": 800
+    }
 
         try:
             response = requests.post(endpoint, headers=headers, json=payload)
@@ -78,39 +74,27 @@ def convert_images_to_yaml(image_paths, api_key, endpoint):
             ai_response = response.json()['choices'][0]['message']['content']
             combined_yaml += ai_response + "\n"
         except requests.RequestException as e:
-            print(f"Failed to process {image_path}. Error: {e}")
+            print(f"Failed to process page {i + 1}. Error: {e}")
             continue
 
     final_yaml = combined_yaml.replace('```yaml\n', '').replace('```', '')
+
+    print(f"YAML conversion completed successfully.")
     return final_yaml
 
-def pdf_to_yaml(pdf_path, poppler_path, api_key, endpoint):
-    """
-    Complete workflow to convert a PDF to a YAML file.
-    """
-    pdf_name = os.path.basename(pdf_path).replace('.pdf', '')
-    base_dir = os.path.dirname(pdf_path)
-    
-    image_output_dir = os.path.join(base_dir, f"pdf-images/{pdf_name}")
-    yaml_output_dir = os.path.join(base_dir, "yaml-files")
-
-    if not os.path.exists(yaml_output_dir):
-        os.makedirs(yaml_output_dir)
-
-    image_paths = pdf_to_images(pdf_path, image_output_dir, poppler_path=poppler_path)
-    
-    yaml_string = convert_images_to_yaml(image_paths, api_key, endpoint)
-    
-    yaml_filename = os.path.join(yaml_output_dir, f"{pdf_name}.yaml")
-    with open(yaml_filename, "w") as f:
-        f.write(yaml_string)
-    
-    print(f"YAML file saved as {yaml_filename}")
-    return yaml_filename
-
-pdf_path = 'docs/L3-NetworX Pricer Functionality - All States Medicaid - Job Aid.pdf'
+pdf_path = r"C:\Users\gurunaml\OneDrive - Firstsource Solutions Ltd\Desktop\Edit 252\L2-Authorization Non-Clinical Notes - CA Medicaid - Job Aid.pdf"
 poppler_path = r'poppler-24.07.0\Library\bin'
-api_key = "YOUR_API_KEY"  
-endpoint = "YOUR_API_ENDPOINT"  
+api_key = "ee65aca022a74803b2e2d1ff4c373b05"
+endpoint = "https://firstsource.openai.azure.com/openai/deployments/gpt-4o-v05-13/chat/completions?api-version=2024-02-15-preview"
 
-pdf_to_yaml(pdf_path, poppler_path, api_key, endpoint)
+final_yaml = pdf_to_yaml(pdf_path, poppler_path, api_key, endpoint)
+
+yaml_output_dir = os.path.join(os.path.dirname(pdf_path), "yaml-files")
+if not os.path.exists(yaml_output_dir):
+    os.makedirs(yaml_output_dir)
+yaml_filename = os.path.join(yaml_output_dir, f"{os.path.basename(pdf_path).replace('.pdf', '')}.yaml")
+
+with open(yaml_filename, "w") as f:
+    f.write(final_yaml)
+
+print(f"Final YAML file saved as {yaml_filename}")

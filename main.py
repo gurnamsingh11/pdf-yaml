@@ -1,25 +1,27 @@
+import gradio as gr
 import os
 import base64
 import requests
 from pdf2image import convert_from_path
 from io import BytesIO
 
-def pdf_to_yaml(pdf_path, poppler_path, api_key, endpoint):
+def pdf_to_yaml(pdf_file):
     """
     Convert each page of a PDF directly into YAML without saving images, and return the final YAML string.
     """
+    pdf_name = os.path.basename(pdf_file.name).replace('.pdf', '')
+    poppler_path = r'poppler-24.07.0\Library\bin'
+    api_key = "ee65aca022a74803b2e2d1ff4c373b05"
+    endpoint = "https://firstsource.openai.azure.com/openai/deployments/gpt-4o-v05-13/chat/completions?api-version=2024-02-15-preview"
 
-    pdf_name = os.path.basename(pdf_path).replace('.pdf', '')
-    base_dir = os.path.dirname(pdf_path)
     
     headers = {
         "Content-Type": "application/json",
         "api-key": api_key,
     }
 
-
     print(f"Converting {pdf_name} PDF pages to images...")
-    pages = convert_from_path(pdf_path, poppler_path=poppler_path)
+    pages = convert_from_path(pdf_file.name, poppler_path=poppler_path)
 
     combined_yaml = ""
 
@@ -33,40 +35,40 @@ def pdf_to_yaml(pdf_path, poppler_path, api_key, endpoint):
         encoded_image = base64.b64encode(img_byte_arr.read()).decode('ascii')
 
         payload = {
-      "messages": [
-        {
-          "role": "system",
-          "content": [
-            {
-              "type": "text",
-              "text": "You are an AI assistant that converts given image to YAML file."
-            }
-          ]
-        },
-        {
-          "role": "user",
-          "content": [
-            {
-              "type": "text",
-              "text": "\n"
-            },
-            {
-              "type": "image_url",
-              "image_url": {
-                "url": f"data:image/jpeg;base64,{encoded_image}"
-              }
-            },
-            {
-              "type": "text",
-              "text": "Convert the given image to YAML file without adding any other data by yourself."
-            }
-          ]
+            "messages": [
+                {
+                    "role": "system",
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": "You are an AI assistant that converts given image to YAML file."
+                        }
+                    ]
+                },
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": "\n"
+                        },
+                        {
+                            "type": "image_url",
+                            "image_url": {
+                                "url": f"data:image/jpeg;base64,{encoded_image}"
+                            }
+                        },
+                        {
+                            "type": "text",
+                            "text": "Convert the given image to YAML file without adding any other data by yourself."
+                        }
+                    ]
+                }
+            ],
+            "temperature": 0,
+            "top_p": 0.95,
+            "max_tokens": 800
         }
-      ],
-      "temperature": 0,
-      "top_p": 0.95,
-      "max_tokens": 800
-    }
 
         try:
             response = requests.post(endpoint, headers=headers, json=payload)
@@ -82,19 +84,26 @@ def pdf_to_yaml(pdf_path, poppler_path, api_key, endpoint):
     print(f"YAML conversion completed successfully.")
     return final_yaml
 
-pdf_path = r"C:\Users\gurunaml\OneDrive - Firstsource Solutions Ltd\Desktop\Edit 252\L2-Authorization Non-Clinical Notes - CA Medicaid - Job Aid.pdf"
-poppler_path = r'poppler-24.07.0\Library\bin'
-api_key = "ee65aca022a74803b2e2d1ff4c373b05"
-endpoint = "https://firstsource.openai.azure.com/openai/deployments/gpt-4o-v05-13/chat/completions?api-version=2024-02-15-preview"
+def process_pdf(pdf_file):
+    yaml_content = pdf_to_yaml(pdf_file)
+    
+    yaml_filename = pdf_file.name.replace('.pdf', '.yaml')
+    
+    with open(yaml_filename, "w") as f:
+        f.write(yaml_content)
 
-final_yaml = pdf_to_yaml(pdf_path, poppler_path, api_key, endpoint)
+    return yaml_filename
 
-yaml_output_dir = os.path.join(os.path.dirname(pdf_path), "yaml-files")
-if not os.path.exists(yaml_output_dir):
-    os.makedirs(yaml_output_dir)
-yaml_filename = os.path.join(yaml_output_dir, f"{os.path.basename(pdf_path).replace('.pdf', '')}.yaml")
 
-with open(yaml_filename, "w") as f:
-    f.write(final_yaml)
+with gr.Blocks() as interface:
+    gr.Markdown("# PDF to YAML Converter")
 
-print(f"Final YAML file saved as {yaml_filename}")
+    pdf_input = gr.File(label="Upload PDF File", file_types=[".pdf"])
+
+    yaml_output = gr.File(label="Download YAML File")
+
+    convert_button = gr.Button("Convert PDF to YAML")
+
+    convert_button.click(process_pdf, inputs=[pdf_input], outputs=[yaml_output])
+
+interface.launch(share=True)

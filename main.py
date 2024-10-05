@@ -1,3 +1,5 @@
+# source myenv/bin/activate
+
 import os
 import base64
 import requests
@@ -16,7 +18,6 @@ def pdf_to_text(pdf_file):
     Convert each page of a PDF directly into text without saving images, and return the final text content.
     """
     pdf_name = 'input'
-    poppler_path = r'poppler-24.07.0\Library\bin'
     api_key = "ee65aca022a74803b2e2d1ff4c373b05"  
     endpoint = "https://firstsource.openai.azure.com/openai/deployments/gpt-4o-v05-13/chat/completions?api-version=2024-02-15-preview"
 
@@ -26,7 +27,7 @@ def pdf_to_text(pdf_file):
     }
 
     print(f"Converting {pdf_name} PDF pages to images...")
-    pages = convert_from_path(pdf_file, poppler_path=poppler_path)  # Use pdf_file.file to access the file-like object
+    pages = convert_from_path(pdf_file)  # Use pdf_file.file to access the file-like object
 
     full_json = []
 

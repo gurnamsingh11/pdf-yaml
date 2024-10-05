@@ -1,23 +1,21 @@
+import gradio as gr
 import os
 import base64
 import requests
 from pdf2image import convert_from_path
 from io import BytesIO
-from fastapi import FastAPI, File, UploadFile
-from fastapi.responses import FileResponse
 import json
-from typing import Annotated
-import shutil
+import yaml
+import re
 
-app = FastAPI()
 
 def pdf_to_text(pdf_file):
     """
-    Convert each page of a PDF directly into text without saving images, and return the final text content.
+    Convert each page of a PDF directly into YAML without saving images, and return the final YAML string.
     """
-    pdf_name = 'input'
+    pdf_name = os.path.basename(pdf_file.name).replace('.pdf', '')
     poppler_path = r'poppler-24.07.0\Library\bin'
-    api_key = "ee65aca022a74803b2e2d1ff4c373b05"  
+    api_key = "ee65aca022a74803b2e2d1ff4c373b05"
     endpoint = "https://firstsource.openai.azure.com/openai/deployments/gpt-4o-v05-13/chat/completions?api-version=2024-02-15-preview"
 
     headers = {
@@ -26,7 +24,7 @@ def pdf_to_text(pdf_file):
     }
 
     print(f"Converting {pdf_name} PDF pages to images...")
-    pages = convert_from_path(pdf_file, poppler_path=poppler_path)  # Use pdf_file.file to access the file-like object
+    pages = convert_from_path(pdf_file.name, poppler_path=poppler_path)
 
     full_json = []
 
@@ -101,60 +99,39 @@ def pdf_to_text(pdf_file):
             print(f"Failed to process page {i + 1}. Error: {e}")
             continue
 
+    # final_yaml = combined_yaml.replace('```yaml\n', '').replace('```', '')
+
+    print(f"YAML conversion completed successfully.")
+    # return merge_json_objects(combined_yaml)
     return full_json
 
-def process_pdf(upload_file: UploadFile):
+def process_pdf(pdf_file):
     combined_json = {}
-    # Create a temporary file to save the uploaded PDF
-    temp_pdf_path = f"temp_{upload_file.filename}"
-    
-    # Save the uploaded file to a temporary location
-    with open(temp_pdf_path, "wb") as buffer:
-        shutil.copyfileobj(upload_file.file, buffer)
+    # text_content = pdf_to_text(pdf_file)
+    json_content = pdf_to_text(pdf_file)
 
-    # Use the temporary file path for processing
-    json_content = pdf_to_text(temp_pdf_path)
-
-    # Create the JSON filename
-    json_filename = temp_pdf_path.replace('.pdf', '.json')
+    json_filename = pdf_file.name.replace('.pdf', '.json')
 
     for json_str in json_content:
         json_object = json.loads(json_str)
         combined_json.update(json_object)
 
+
     # Write the combined JSON object to a file
     with open(json_filename, 'w') as json_file:
         json.dump(combined_json, json_file, indent=4)
 
-    # Clean up the temporary PDF file
-    os.remove(temp_pdf_path)
-
     return json_filename
 
-@app.post("/upload_pdf/")
-async def upload_pdf(file: UploadFile = File(...)):
-    if not file.filename.endswith('.pdf'):
-        return {"error": "File must be a PDF."}
+with gr.Blocks() as interface:
+    gr.Markdown("# PDF 2 JSON Converter")
 
-    json_filename = process_pdf(file)
+    pdf_input = gr.File(label="Upload PDF File", file_types=[".pdf"])
 
-    return FileResponse(json_filename, media_type='application/json', filename=os.path.basename(json_filename))
+    json_output = gr.File(label="Download JSON File")
 
-@app.get("/")
-async def main():
-    content = """
-<body>
-<form action="/uploadpdf/" enctype="multipart/form-data" method="post">
-<input name="pdf_file" type="file" accept=".pdf" required>
-<input type="submit">
-</form>
-</body>
-    """
-    return content
+    convert_button = gr.Button("Convert PDF to JSON")
 
-@app.on_event("shutdown")
-def shutdown_event():
-    # Cleanup any generated JSON files after serving
-    for filename in os.listdir('.'):
-        if filename.endswith('.json'):
-            os.remove(filename)
+    convert_button.click(process_pdf, inputs=[pdf_input], outputs=[json_output])
+
+interface.launch(debug=True)

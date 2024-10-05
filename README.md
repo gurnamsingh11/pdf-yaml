@@ -1,1 +1,0 @@
-<h1>Convert PDF to YAML file.</h1>
